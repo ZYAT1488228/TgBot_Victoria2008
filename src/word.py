@@ -1,7 +1,6 @@
 from docx import Document
 from datetime import date
 from docx.shared import Pt
-
 from io import BytesIO
 import os
 
@@ -18,8 +17,12 @@ def make_pass(
     passport_issued_by: str = '',
     passport_id_code: str = ''
 ):
-    doc = Document('./templates/template.docx')
-    
+    # Абсолютный путь к шаблону, чтобы не зависеть от рабочей директории (systemd и т.п.)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    template_path = os.path.join(BASE_DIR, '..', 'templates', 'template.docx')
+
+    doc = Document(template_path)
+
     start_date = start_date.strftime("%d.%m.%Y")
     end_date = end_date.strftime("%d.%m.%Y")
     created_at = created_at.strftime("%d.%m.%Y")
@@ -35,7 +38,7 @@ def make_pass(
         if '<person_data>' in paragraph.text:
             paragraph.text = paragraph.text.replace('<person_data>', person_data.strip())
 
-    # Заменяем другие плейсхолдеры
+    # Заменяем остальные плейсхолдеры
     for paragraph in doc.paragraphs:
         if '<date_start>' in paragraph.text:
             paragraph.text = paragraph.text.replace('<date_start>', start_date)
@@ -44,15 +47,9 @@ def make_pass(
         if '<todaysdate>' in paragraph.text:
             paragraph.text = paragraph.text.replace('<todaysdate>', created_at)
         if '<automodel>' in paragraph.text:
-            if auto_model:
-                paragraph.text = paragraph.text.replace('<automodel>', f'Авто: {auto_model}')
-            else:
-                paragraph.text = paragraph.text.replace('<automodel>', '')
+            paragraph.text = paragraph.text.replace('<automodel>', f'Авто: {auto_model}' if auto_model else '')
         if '<autoplates>' in paragraph.text:
-            if auto_plates:
-                paragraph.text = paragraph.text.replace('<autoplates>', f'Гос.Номер: {auto_plates}')
-            else:
-                paragraph.text = paragraph.text.replace('<autoplates>', '')
+            paragraph.text = paragraph.text.replace('<autoplates>', f'Гос.Номер: {auto_plates}' if auto_plates else '')
         if '<number>' in paragraph.text:
             paragraph.text = paragraph.text.replace('<number>', num)
         if '<passport_issued_by>' in paragraph.text:
@@ -64,10 +61,12 @@ def make_pass(
             run.font.size = Pt(16)
             run.font.name = 'Times New Roman'
 
-    new_word_file = fr'{num}_{names[0]}_{start_date}_{end_date}.docx'
-    
+    # Безопасное имя файла (убираем пробелы/кириллицу/спецсимволы, оставляем A-Z a-z 0-9 _ -)
+    base_name = "".join(c for c in names[0] if c.isalnum() or c in ('_', '-'))
+    new_word_file = f'{num}_{base_name}_{start_date}_{end_date}.docx'
+
     file_stream = BytesIO()
-    
     doc.save(file_stream)
+    file_stream.seek(0)  # критично: перемотать поток перед отправкой в Telegram
 
     return file_stream, new_word_file
